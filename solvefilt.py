@@ -43,10 +43,11 @@ def Envelope(Y, T):
     return np.abs(np.sum(mag.reshape((N, T)), axis=1)) / T
 
 
-#Y = LoadWAV("TB-303 Bass 01.wav")
-Y = LoadWAV("TB-303 Bass 18.wav")
+Y = LoadWAV("TB-303 Bass 01.wav")
+#Y = LoadWAV("TB-303 Bass 18.wav")
 T = Fundamental(Y)
-saw0 = np.linspace(-0.5, 0.5, T)
+saw0 = np.linspace(0, 1, T)
+saw0[T//2:] -= 1.0
 X = np.fft.fft(saw0)
 X /= X[1]
 y, targetH = None, None
@@ -77,12 +78,12 @@ def FilterResponse(z, x):
     or in imag
     '''
     p1i = x[0] < 0 and -x[0]*1j or x[0]
-    p1 = np.exp(p1i - np.exp(x[1]))
-    p1c = np.exp(-p1i - np.exp(x[1]))
+    p1 = np.exp(p1i + x[1])
+    p1c = np.exp(-p1i + x[1])
     p2i = x[2] < 0 and -x[2]*1j or x[2]
-    p2 = np.exp(p2i - np.exp(x[3]))
-    p2c = np.exp(-p2i - np.exp(x[3]))
-    z1 = np.exp(-np.exp(x[4]))
+    p2 = np.exp(p2i + x[3])
+    p2c = np.exp(-p2i + x[3])
+    z1 = np.exp(x[4])
     if np.imag(p1) == 0 and np.real(p1) > 1.0:
         p1 = 1.0 - p1
     if np.imag(p1c) == 0 and np.real(p1c) > 1.0:
@@ -99,11 +100,11 @@ def FilterResponse(z, x):
 def FilterCoeffs(x):
     """ return filter coefficients """
     p1i = x[0] < 0 and -x[0]*1j or x[0]
-    p1 = np.exp(p1i - np.exp(x[1]))
-    p1c = np.exp(-p1i - np.exp(x[1]))
+    p1 = np.exp(p1i + x[1])
+    p1c = np.exp(-p1i + x[1])
     p2i = x[2] < 0 and -x[2]*1j or x[2]
-    p2 = np.exp(p2i - np.exp(x[3]))
-    p2c = np.exp(-p2i - np.exp(x[3]))
+    p2 = np.exp(p2i + x[3])
+    p2c = np.exp(-p2i + x[3])
 
     if np.imag(p1) == 0 and np.real(p1) > 1.0:
         p1 = 1.0 - p1
@@ -113,7 +114,7 @@ def FilterCoeffs(x):
         p2 = 1.0 - p2
     if np.imag(p2c) == 0 and np.real(p2c) > 1.0:
         p2c = 1.0 - p2c
-    z1 = np.exp(-np.exp(x[4]))
+    z1 = np.exp(x[4])
     # first biquad:
     # (z - z1) / [(z - p1) (z - p1*)]
     a1 = np.real(p1 + p1c)
@@ -182,7 +183,7 @@ def plot303(n):
 
 vg = autograd.value_and_grad(filterr)
 # x0 = np.array([0.17608125,  3.32796736,  1.2262284 ,  4.32030568,  5.18875782])
-x0 = np.array([-0.17, -3, 0.1, -2, -5])
+x0 = np.array([-0.17, -np.exp(-3), 0.1, -np.exp(-2), -np.exp(-5)])
 
 
 def solve(n, x0):
@@ -222,13 +223,8 @@ def reconstruct():
     weight = np.log(f+1) - np.log(f)
     w = 2 * np.pi * f / T
     z = np.exp(1j*w)
-    x0 = np.array([-3,
-                   -0.04, -0.1, -3, -0.01,
-                   0.1, -0.01, -3.0, -0.01,
-                   -5])
-    x0 = np.array(
-        [-3.12781823, -0.03961240, -0.16108248, -4.04745410,  0.01598121,
-         -0.00567607, -0.01483562, -3.47407793,  0.11547604, -4.93905265])
+    x0 = wave01_params
+    x0[0] = -4.5
 
     def err(x):
         err = 0
@@ -236,14 +232,14 @@ def reconstruct():
             s = np.exp(-np.exp(x[0]) * i)
             y = [x[1] + x[2]*s, x[3] + x[4]*s,
                  x[5] + x[6]*s, x[7] + x[8]*s,
-                 x[9]]
+                 x[9] + x[10]*s]
             h = FilterResponse(z, y)
             h = h / h[0]
             err += np.mean(
                 weight * (np.log(np.clip(np.abs(h), 1e-2, 1e2)) - targetH[i, :])**2)
         return err
 
-    print quick_grad_check(err, x0)
+    # quick_grad_check(err, x0)
 
     '''
     # print autograd.value_and_grad(err)(x)
@@ -299,12 +295,18 @@ pole pair 2:
 zero:
 -0.00245105294529, -0.00430300831021
 '''
-wave18_params = [
-    -3,  # decay rate, exp(-t*exp(3))
+wave18_params = np.array([
+    -3.0,  # decay rate, exp(-t*exp(3))
     # imag base, add,         real base,   add
-    -0.03933817, -0.14012724, -0.01022580, -0.02808014,
-    0.03624802,  0.16378753,  -0.04509206, -0.10511563,
-    -0.00245105294529, -0.00430300831021]
+    -0.04049476, -0.13301186, -0.01022580, -0.02808014,
+    0.03506089,  0.0985560,  -0.04509206, -0.10511563,
+    -0.00245105294529, -0.00430300831021])
+
+wave01_params = np.array(
+    [-4.50441499e+00,  -1.21142437e-01,  -9.05807813e-02,
+     -5.50964061e-03,  -1.51117713e-03,   7.54491803e-02,
+     1.02082227e-01,  -8.93292836e-02,  -9.67523726e-02,
+     5.21468801e-03,  -3.97596605e-03])
 
 
 def getparams(x):
@@ -317,7 +319,8 @@ def getparams(x):
 
 
 def synth(T, params):
-    saw = np.linspace(-0.5, 0.5, T)
+    saw = np.linspace(0, 1, T)
+    saw[T//2:] -= 1.0
     params = list(params)
     out = np.zeros(T*len(params))
     """
