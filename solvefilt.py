@@ -46,8 +46,7 @@ def Envelope(Y, T):
 Y = LoadWAV("TB-303 Bass 01.wav")
 #Y = LoadWAV("TB-303 Bass 18.wav")
 T = Fundamental(Y)
-saw0 = np.linspace(0, 1, T)
-saw0[T//2:] -= 1.0
+saw0 = np.linspace(-0.5, 0.5, T)
 X = np.fft.fft(saw0)
 X /= X[1]
 y, targetH = None, None
@@ -55,10 +54,22 @@ y, targetH = None, None
 
 def LoadPeriod(n):
     global y, targetH
-    y = np.abs(np.fft.fft(Y[int(n*T):int((n+1)*T)]))
-    targetH = y / (y[1] * X)
+    y = np.fft.fft(Y[int(n*T):int((n+1)*T)])
+    y /= np.abs(y[1])
+    jw = np.log(y[1])
+    phase = np.exp(-jw*np.arange(len(y)))
+    targetH = y * phase / X
 
 
+def FilterSPolesZeros(x):
+    # return 4 poles and 1 zero
+    p1i = x[0] < 0 and -x[0]*1j or x[0]
+    p2i = x[2] < 0 and -x[2]*1j or x[2]
+    return ([x[1] + p1i, x[1] - p1i,
+             x[3] + p2i, x[3] - p2i],
+            [x[4]])
+
+ 
 # define target filter here and in FilterCoeffs
 def FilterResponse(z, x):
     ''' -b +- sqrt(b^2 - 4c) / 2
@@ -159,8 +170,9 @@ def filterr(x):
     # this is also a dc-blocking filter
     h = FilterResponse(z, x)
     h = h / h[0]
-    e = np.clip(np.abs(h), 1e-2, 1e2) / np.clip(np.abs(targetH[f]), 1e-2, 1e2)
-    err = weight * np.log(e)**2
+    #e = np.log(np.clip(h, 1e-2, 1e2)) - np.log(np.clip(targetH[f], 1e-2, 1e2))
+    e = np.clip(h, 1e-2, 1e2) - np.clip(targetH[f], 1e-2, 1e2)
+    err = weight * np.real(e * np.conj(e))
     # err = weight * (np.abs(h) - np.abs(targetH[f]))**2
     return np.sum(err)
 
@@ -174,11 +186,32 @@ def plotfilt(x):
     plt.plot(np.log(f) / np.log(2), 10*np.log(np.clip(np.abs(h), 1e-2, 1e2)))
 
 
+def plotfiltphase(x):
+    f = np.arange(1, 256)
+    w = 2 * np.pi * f / 670.0
+    z = np.exp(1j*w)
+    h = FilterResponse(z, x)
+    h = h * (h[1] / np.abs(h[1]))**(np.arange(len(h)) - 2)
+    phase = np.angle(h[1:] / h[:-1])
+    plt.plot(np.log(f[:-1]) / np.log(2), phase)
+    # plt.plot(np.angle(h))
+
+
 def plot303(n):
     f = np.arange(1, 300)
-    y = np.abs(np.fft.fft(Y[int(n*670):int((n+1)*670)]))
+    y = np.abs(np.fft.rfft(Y[int(n*670):int((n+1)*670)]))
+    ypeak = np.argmax(y)
+    print "peak @ f=", np.log(ypeak) / np.log(2)
     plt.plot(np.log(f) / np.log(2), 10*np.log(
         np.clip(np.abs(y[f] / (y[1] * X[f])), 1e-2, 1e2)))
+
+
+def plot303phase(n):
+    f = np.arange(1, 300)
+    y = np.fft.rfft(-Y[int(n*670)-100:int((n+1)*670)-100])
+    # y = y * (y[1] / np.abs(y[1]))**(np.arange(len(y)) - 2)
+    phase = np.angle(y[1:] / y[:-1])
+    plt.plot(np.log(f) / np.log(2), phase[f-1])
 
 
 vg = autograd.value_and_grad(filterr)
