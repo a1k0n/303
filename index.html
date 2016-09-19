@@ -1,0 +1,32 @@
+<html>
+  <head>
+    <title>webkitAudio test</title>
+    <style>
+      div.knobcontainer {
+        width:32px;
+        display:inline-block;
+        background:#abc;
+      }
+
+      div.knob {
+        background-image:url('knob.png');
+        width:32px;
+        height:32px;
+      }
+    </style>
+    <script src="303.js"></script>
+  </head>
+  <body id='body'>
+    <div id="status">Starting up... if nothing happens, perhaps you don't have
+      webkitAudioContext?  This is Chrome-only for now.</div>
+    <button onclick="playpause()" id="playbutton">&gt;</button>
+    <div id="controls">Drag knobs left and right:</div>
+<div>
+  This is a throwaway demo of a <a
+    href="http://a1k0n.net/code/gsynth/">TB303-like bassline synthesizer I wrote
+    over ten years ago</a>, ported to the new webkitAudioContext API.  I just
+  hardcoded a pattern (see the source, but it's full of black magic).  It
+  wouldn't be too hard to make it editable for a proper little Chrome demo.
+</div>
+  </body>
+</html>
