@@ -4,6 +4,9 @@ window.onload = init;
 var ctx, stag;
 var t = 0;
 
+// tb-303 / x0xb0x emulator. Comments in this file refer to x0xb0x components; see
+// http://wiki.openmusiclabs.com/wiki/x0xb0x?action=AttachFile&do=get&target=mainboard2.png
+
 // 640 samples per envelope update
 var ENVINC = 64;
 var f_smp = 44100; // samplerate
@@ -32,8 +35,17 @@ var vcf_cutoff = 0, vcf_envmod = 0,
 //  filterpoles[8][reso] -> pole 3/4 pair slope real
 //  filterpoles[9][reso] -> pole 3/4 pair slope imag
 
-// The first pole/zero pair forms a high-pass filter
-var filternumerator = [46.79, 0.02];
+// The first pole/zero pair forms a 100Hz high-pass filter (but resonance
+// feedback slightly affects the pole location / cutoff) formed by C27/R113 +
+// C25/R114.  This 100Hz high pass filter in the feedback path is part of what
+// makes it sound like a 303; without it, it's too resonant at lower
+// frequencies and sounds like it's whistling fifths and octaves of the
+// fundamental.
+//
+// The other four poles are of course the diode ladder filter; the
+// linear fit is good down to about 200Hz cutoff, which is about the minimum
+// it gets down to anyway.
+
 var filterpoles = [
   [ -1.42475857e-02,  -1.10558351e-02,  -9.58097367e-03,
   -8.63568249e-03,  -7.94942757e-03,  -7.41570560e-03,
@@ -256,25 +268,15 @@ var filterpoles = [
   9.93007906e-01,   9.97070310e-01,   1.00108302e+00,
   1.00504744e+00]];
 
-// define two biquad filter sections; each has a different conjugate pole pair
-// and one zero.
-
-// filter update:
-// y[i] = x[i] * filtergain + x[i-1] * coef[0] +
-//        y[i-1] * coef[1] + y[i-2] * coef[2]
-// state[0] === x[i-1]
-// state[1] === y[i-1]
-// state[2] === y[i-2]
 var f0b = new Float32Array(2);  // filter 0 numerator coefficients
 var f0a = new Float32Array(2);  // filter 0 denominator coefficients
-var f1b = 1;
+var f1b = 1;  // filter 1 numerator, really just a gain compensation
 var f1a = new Float32Array(3);  // filter 1 denominator coefficients
-var f2b = 1;
+var f2b = 1;  // filter 2 numerator, same
 var f2a = new Float32Array(3);  // filter 2 denominator coefficients
 var f0state = new Float32Array(1);
 var f1state = new Float32Array(2);
 var f2state = new Float32Array(2);
-var filtergain = 1;
 
 var oscopectx;
 var oscopedatax, oscopedatay;
@@ -308,12 +310,12 @@ function redrawScope() {
 var pat_idx = 0;
 var _pattern = [
   [46], [46], [46], [46], [53], [34], [41], [49], [34], [41], [46], [49], [29], [46], [37], [41]];
-for (var i = 0; i < _pattern.length; i++) _pattern[i][0] -= 12;
+for (var i = 0; i < _pattern.length; i++) _pattern[i][0] -= 7;
 function getNextRow() {
   // note, accent, slide, cutoff, resonance, envmod, decay
-  // var pattern = [[39], [], [27], [], [39], [42], [27], [], [], [39], [39],
-  // [30], [], [30], [30], [], [39], [], [27], [], [39], [42], [27], [], [39], [],
-  // [39], [], [30], [30], [30], [39]];
+  //var _pattern = [[39], [], [27], [], [39], [42], [27], [], [], [39], [39],
+  //[30], [], [30], [30], [], [39], [], [27], [], [39], [42], [27], [], [39], [],
+  //[39], [], [30], [30], [30], [39]];
   if (pat_idx & 1) {
     pat_idx++;
     return [];
@@ -336,8 +338,8 @@ function recalcParams() {
   // these are from measuring the voltage across R69 on my x0xb0x while holding
   // the gate high or low, and linearly fitting the cutoff frequency to current
   // (appears to be about 27.6Hz/mV_R69 + 103 Hz
-  vcf_e1 = Math.exp(5.09 + 2.15*vcf_cutoff + 1.99*vcf_envmod) + 103;
-  vcf_e0 = Math.exp(5.09 + 1.75*vcf_cutoff - 0.665*vcf_envmod) + 103;
+  vcf_e1 = Math.exp(5.55921003 + 2.17788267*vcf_cutoff + 1.99224351*vcf_envmod) + 103;
+  vcf_e0 = Math.exp(5.22617147 + 1.70418937*vcf_cutoff - 0.68382928*vcf_envmod) + 103;
   console.log(vcf_e0, vcf_e1);
   vcf_e0 *= 2 * Math.PI / f_smp;
   vcf_e1 *= 2 * Math.PI / f_smp;
@@ -369,6 +371,7 @@ function readRow(patdata) {
   //var smsg = "row " + pat_idx;
   // patdata[1] - accent (unsupported)
   // patdata[2] - slide  (same)
+  /*
   if(patdata[3] !== undefined) { // cutoff
     vcf_cutoff = patdata[3];
     //smsg += " cutoff "+Math.floor(100*vcf_cutoff);
@@ -387,8 +390,9 @@ function readRow(patdata) {
   }
 
   // patdata[7] // accent amount
+  */
 
-  recalcParams();
+  // recalcParams();
   // A-4 is concert A (440Hz)
   if(patdata[0] !== undefined) { // note
     playNote(patdata[0]);
@@ -425,18 +429,11 @@ function synth(outbufL, outbufR, offset, size) {
       var p2i = filterpoles[7][resoIdx] + w * filterpoles[9][resoIdx];
       
       // filter section 1
-      // H(s) = (s/wh + 0.02) / (1 + s/wh)
-      // gain @ s = 0:
-      // H(0) = 0.02
-      // numerator zeros:
-      // s = -0.02 * wh
       var z0 = 1;  // zero @ DC
       p0 = Math.exp(p0);
+      // gain @inf -> 1/(1+k); boost volume by 2, and also compensate for
+      // resonance (R72)
       var targetgain = 2/(1+reso_k) + 0.5*vcf_reso;
-      // sRC / (1 + sRC + ksRC)
-      // sRC / (1 + sRC(1+k))
-      // RC / (RC(1+k))
-      // gain @inf -> 1/(1+k)
       f0b[0] = 1;     // (z - z0) * z^-1
       f0b[1] = -z0;
       f0a[0] = 1;     // (z - p0) * z^-1
@@ -461,16 +458,13 @@ function synth(outbufL, outbufR, offset, size) {
       f2a[2] = exp_p2r*exp_p2r;
       f2b = f2a[0] + f2a[1] + f2a[2];
 
-      // console.log(f0b, f0a, f1a, f2a);
-      // console.log('filtergain', filtergain, 'w', w);
-
       vcf_envpos = 0;
     }
 
     // first stage: preamp, one-zero, one-pole highpass
-    var square = (vco_k < (vco_period>>1) ? vco_k * vco_scale : 1);
+    // var square = (vco_k < (vco_period>>1) ? vco_k * vco_scale : 1);
     var saw = vco_k * vco_scale - 0.5;
-    var x = square;
+    var x = saw;
     outbufL[i] = x;  // hack: show the original wave on the scope
     var y = f0b[0] * x + f0state[0];
     f0state[0] = f0b[1] * x - f0a[1] * y;

@@ -34,7 +34,7 @@ def Load():
     # grab the 5th note in the pattern, which runs for 3 steps (the longest)
     for i in range(0, len(wav)/(32*T)):
         notes.extend(wav[i*32*T + 6*T:i*32*T + 9*T])
-    return notes
+    return notes, wav
 
 
 def minphase(x, y):
