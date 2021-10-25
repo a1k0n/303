@@ -595,14 +595,6 @@ function init() {
   oscopedatax = new Float32Array(oscopewidth);
   oscopedatay = new Float32Array(oscopewidth);
 
-  ctx = new AudioContext();
-  gainNode = ctx.createGain();
-  gainNode.gain.value = 0.8;
-
-  jsNode = ctx.createScriptProcessor(2048, 0, 2);
-  jsNode.onaudioprocess = audio_cb;
-  jsNode.connect(gainNode);
-
   stag = document.getElementById('status');
 
   var body = document.getElementById('body');
@@ -627,6 +619,15 @@ function init() {
 var playing = false;
 function playpause()
 {
+  if (!ctx) {
+    ctx = new AudioContext();
+    gainNode = ctx.createGain();
+    gainNode.gain.value = 0.8;
+
+    jsNode = ctx.createScriptProcessor(2048, 0, 2);
+    jsNode.onaudioprocess = audio_cb;
+    jsNode.connect(gainNode);
+  }
   if(playing) {
     gainNode.disconnect(0);
     playing = false;
